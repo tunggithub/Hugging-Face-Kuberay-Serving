@@ -1,0 +1,109 @@
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: text-summarizer
+spec:
+  serveConfigV2: |
+    applications:
+      - name: "text_summarizer"
+        import_path: "ray_transum:app"
+        runtime_env:
+          working_dir: "https://github.com/tunggithub/Hugging-Face-Kuberay-Serving/raw/refs/heads/main/ray_transum.zip"
+          # working_dir: "https://github.com/Mayurji/Explore-Libraries/raw/157097ce2f15b109d33516926fc48872349fe1e3/MLOps/Ray/sample-yamls/ray_transum.zip"
+          # Tự động pip install torch & transformers khi khởi tạo
+          config: {"setup_timeout_seconds": 1200}
+        deployments:
+          - name: "Translator"
+            num_replicas: "auto"
+            max_ongoing_requests: 5
+            autoscaling_config:
+              min_replicas: 1
+              max_replicas: 5
+              target_ongoing_requests: 2
+            ray_actor_options:
+              num_gpus: 0.1
+
+          - name: "Summarizer"
+            route_prefix: "/"
+            num_replicas: "auto"
+            max_ongoing_requests: 5
+            autoscaling_config:
+              min_replicas: 1
+              max_replicas: 5
+              target_ongoing_requests: 2
+            ray_actor_options:
+              num_gpus: 0.1
+
+  rayClusterConfig:
+    rayVersion: "2.38.0"
+
+    headGroupSpec:
+      rayStartParams: {}
+        # num-gpus: "1"
+      template:
+        spec:
+          runtimeClassName: nvidia
+          tolerations:
+            - key: nvidia.com/gpu
+              operator: Exists
+              effect: NoSchedule
+          containers:
+            - name: ray-head
+              # Official Ray image with GPU & CUDA support
+              image: rayproject/ray-ml:2.46.0.0e19ea-py311-gpu
+              resources:
+                limits:
+                  cpu: 12
+                  memory: "16G"
+                  nvidia.com/gpu: 1
+              # env:
+              #   - name: NVIDIA_VISIBLE_DEVICES
+              #     value: "all"
+              #   - name: NVIDIA_DRIVER_CAPABILITIES
+              #     value: "compute,utility"
+              #   - name: LD_LIBRARY_PATH
+              #     value: "/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
+              env:
+                - name: NVIDIA_VISIBLE_DEVICES
+                  value: all
+                - name: NVIDIA_DRIVER_CAPABILITIES
+                  value: all
+              ports:
+                - containerPort: 6379
+                  name: gcs-server
+                - containerPort: 8265
+                  name: dashboard
+                - containerPort: 10001
+                  name: client
+                - containerPort: 8000
+                  name: serve
+
+    # workerGroupSpecs:
+    #   - groupName: small-group
+    #     rayStartParams: {}
+    #       # Cho Ray biết mỗi worker có 1 GPU
+    #       # num-gpus: "1"
+    #     replicas: 1
+    #     minReplicas: 1
+    #     maxReplicas: 1
+    #     template:
+    #       spec:
+    #         containers:
+    #           - name: ray-worker
+    #             image: rayproject/ray-ml:2.46.0.0e19ea-py311-gpu
+    #             resources:
+    #               requests:
+    #                 cpu: 4
+    #                 memory: 4Gi
+    #                 nvidia.com/gpu: 1
+    #               limits:
+    #                 cpu: 4
+    #                 memory: 6Gi
+    #                 nvidia.com/gpu: 1
+    #             env:
+    #               - name: NVIDIA_VISIBLE_DEVICES
+    #                 value: "all"
+    #               - name: NVIDIA_DRIVER_CAPABILITIES
+    #                 value: "compute,utility"
+    #               - name: LD_LIBRARY_PATH
+    #                 value: "/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
